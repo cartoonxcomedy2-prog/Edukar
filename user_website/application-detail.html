@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Application Detail — EduKar</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <style>
+        .app-page { width:100% !important; padding:16px 16px 40px !important; box-sizing:border-box !important; max-width:100% !important; margin:0 !important; }
+        .app-section { background:transparent !important; border:none !important; box-shadow:none !important; margin-bottom:6px !important; }
+        .timeline-step { text-align:center; position:relative; z-index:2; flex:1; }
+        .timeline-dot { width:38px; height:38px; border-radius:50%; display:flex; align-items:center; justify-content:center; margin:0 auto; font-size:13px; font-weight:900; transition:all .3s; }
+        .timeline-label { font-size:10px; font-weight:700; margin-top:6px; }
+        .doc-card { padding:20px; border-radius:14px; text-align:center; transition:all .2s; }
+        .doc-card:hover { transform:translateY(-2px); }
+        .info-row { display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-bottom:1px solid #F1F5F9; font-size:13px; }
+        .info-row:last-child { border-bottom:none; }
+    </style>
+
+    <!-- Auth guard: redirect to login BEFORE body renders if not logged in -->
+    <script>
+        (function() {
+            var token = localStorage.getItem('st_token');
+            var loginAt = parseInt(localStorage.getItem('st_login_at') || '0', 10);
+            var maxAge = 7 * 24 * 60 * 60 * 1000;
+            if (!token || !loginAt || (Date.now() - loginAt) > maxAge) {
+                localStorage.removeItem('st_token');
+                localStorage.removeItem('st_user');
+                localStorage.removeItem('st_login_at');
+                document.documentElement.style.display = 'none';
+                window.location.replace('login.html');
+            }
+        })();
+    </script>
+</head>
+<body style="visibility:hidden; opacity:0;">
+<div class="app-page" id="content"><div class="page-loader"><div class="loader"></div></div></div>
+<script src="js/config.js"></script>
+<script src="js/dashboard-nav.js"></script>
+<script src="js/application-detail.js"></script>
+</body>
+</html>

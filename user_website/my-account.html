@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Profile — EduKar</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+
+    <!-- Comprehensive SEO Meta Tags for EduKar -->
+    <meta name="description" content="EduKar is Pakistan's premier education portal. Find top universities, discover fully-funded scholarships, and track your admission applications seamlessly in one place.">
+    <meta name="keywords" content="EduKar, Edukar Pakistan, scholarships in Pakistan, top universities in Pakistan, higher education, online admission portal, apply for university, study in Pakistan, education platform, best scholarship portal, admission 2026, EduKar admission, student portal">
+    <meta name="author" content="EduKar Platform">
+    <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1">
+    
+    <!-- Open Graph / Social Media Meta Tags -->
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="EduKar | Top Universities & Scholarships in Pakistan">
+    <meta property="og:description" content="EduKar is your ultimate gateway to top universities and fully-funded scholarships. Apply online and track your applications securely.">
+    <meta property="og:site_name" content="EduKar">
+    
+    <!-- Twitter Meta Tags -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="EduKar | Top Universities & Scholarships">
+    <meta name="twitter:description" content="Your ultimate gateway to top universities and scholarships. Apply online and track applications.">
+
+
+    <!-- Auth guard: redirect to login BEFORE body renders if not logged in -->
+    <script>
+        (function() {
+            var token = localStorage.getItem('st_token');
+            var loginAt = parseInt(localStorage.getItem('st_login_at') || '0', 10);
+            var maxAge = 7 * 24 * 60 * 60 * 1000;
+            if (!token || !loginAt || (Date.now() - loginAt) > maxAge) {
+                localStorage.removeItem('st_token');
+                localStorage.removeItem('st_user');
+                localStorage.removeItem('st_login_at');
+                document.documentElement.style.display = 'none';
+                window.location.replace('login.html');
+            }
+        })();
+    </script>
+</head>
+<body style="visibility:hidden; opacity:0;">
+<div class="page-wrap">
+    <div class="container" style="max-width:1100px;">
+        <div class="section-header" style="margin-bottom:32px;">
+            <h1 style="font-size:32px;"><i class="fas fa-user-circle" style="color:var(--primary);"></i> My Profile</h1>
+            <p>Manage your account and security settings</p>
+        </div>
+
+        <!-- Profile Header -->
+        <div class="detail-section fade-in visible" style="margin-bottom:24px;">
+            <div style="display:flex; gap:24px; align-items:center; flex-wrap:wrap;">
+                <div style="width:80px; height:80px; border-radius:50%; background:linear-gradient(135deg, var(--primary), var(--accent)); display:flex; align-items:center; justify-content:center; font-size:32px; color:#fff; font-weight:900;" id="avatar">U</div>
+                <div><h2 id="dispName" style="font-size:24px; font-weight:900; color:var(--navy);">Loading...</h2><p id="dispEmail" style="color:var(--slate-500);">...</p></div>
+            </div>
+        </div>
+
+        <div class="grid grid--2">
+            <div class="detail-section fade-in visible stagger-1">
+                <h3><i class="fas fa-edit" style="color:var(--primary);"></i> Edit Profile</h3>
+                <form id="profileForm">
+                    <div class="form-group"><label>Full Name</label><input type="text" class="form-input" id="name" required></div>
+                    <div class="form-group"><label>Phone</label><input type="tel" class="form-input" id="phone"></div>
+                    <div class="form-group"><label>Date of Birth</label><input type="date" class="form-input" id="dob"></div>
+                    <button type="submit" class="btn btn--primary btn--full" id="saveBtn"><i class="fas fa-save"></i> Save Changes</button>
+                </form>
+            </div>
+            <div class="detail-section fade-in visible stagger-2">
+                <h3><i class="fas fa-lock" style="color:var(--orange);"></i> Change Password</h3>
+                <form id="pwForm">
+                    <div class="form-group"><label>Current Password</label><input type="password" class="form-input" id="currentPw" required></div>
+                    <div class="form-group"><label>New Password</label><input type="password" class="form-input" id="newPw" required minlength="6"></div>
+                    <div class="form-group"><label>Confirm New</label><input type="password" class="form-input" id="confirmPw" required></div>
+                    <button type="submit" class="btn btn--outline btn--full" id="pwBtn"><i class="fas fa-key"></i> Update Password</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+<script src="js/config.js"></script>
+<script src="js/dashboard-nav.js"></script>
+<script src="js/pages.js"></script>
+<script>initMyAccountPage();</script>
+</body>
+</html>

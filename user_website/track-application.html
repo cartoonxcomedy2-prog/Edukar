@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Applications — EduKar</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+
+    <!-- Comprehensive SEO Meta Tags for EduKar -->
+    <meta name="description" content="EduKar is Pakistan's premier education portal. Find top universities, discover fully-funded scholarships, and track your admission applications seamlessly in one place.">
+    <meta name="keywords" content="EduKar, Edukar Pakistan, scholarships in Pakistan, top universities in Pakistan, higher education, online admission portal, apply for university, study in Pakistan, education platform, best scholarship portal, admission 2026, EduKar admission, student portal">
+    <meta name="author" content="EduKar Platform">
+    <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1">
+    
+    <!-- Open Graph / Social Media Meta Tags -->
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="EduKar | Top Universities & Scholarships in Pakistan">
+    <meta property="og:description" content="EduKar is your ultimate gateway to top universities and fully-funded scholarships. Apply online and track your applications securely.">
+    <meta property="og:site_name" content="EduKar">
+    
+    <!-- Twitter Meta Tags -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="EduKar | Top Universities & Scholarships">
+    <meta name="twitter:description" content="Your ultimate gateway to top universities and scholarships. Apply online and track applications.">
+
+
+    <!-- Auth guard: redirect to login BEFORE body renders if not logged in -->
+    <script>
+        (function() {
+            var token = localStorage.getItem('st_token');
+            var loginAt = parseInt(localStorage.getItem('st_login_at') || '0', 10);
+            var maxAge = 7 * 24 * 60 * 60 * 1000;
+            if (!token || !loginAt || (Date.now() - loginAt) > maxAge) {
+                localStorage.removeItem('st_token');
+                localStorage.removeItem('st_user');
+                localStorage.removeItem('st_login_at');
+                document.documentElement.style.display = 'none';
+                window.location.replace('login.html');
+            }
+        })();
+    </script>
+</head>
+<body style="visibility:hidden; opacity:0;">
+<div class="page-wrap">
+    <div class="container">
+        <div class="section-header" style="margin-bottom:32px;">
+            <h1 style="font-size:32px;"><i class="fas fa-chart-line" style="color:var(--primary);"></i> My Applications</h1>
+            <p>Track all your university and scholarship applications</p>
+        </div>
+        <div class="search-bar" style="margin-bottom:32px;"><i class="fas fa-search search-bar__icon"></i><input type="text" id="searchInput" placeholder="Search applications..."></div>
+        <div id="appList"><div class="page-loader"><div class="loader"></div></div></div>
+    </div>
+</div>
+<script src="js/config.js"></script>
+<script src="js/dashboard-nav.js"></script>
+<script src="js/pages.js"></script>
+<script>initTrackAppPage();</script>
+</body>
+</html>

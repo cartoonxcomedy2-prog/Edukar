@@ -1,0 +1,9 @@
+# Backend - Sensitive files
+.env
+.env.*
+*.env
+error_log.txt
+uploads/
+node_modules/
+npm-debug.log*
+*.log

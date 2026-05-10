@@ -1,0 +1,8 @@
+{
+  "name": "edukar-user-website",
+  "version": "1.0.0",
+  "description": "EduKar User Website",
+  "scripts": {
+    "dev": "npx -y serve . -l 3002 --no-clipboard"
+  }
+}

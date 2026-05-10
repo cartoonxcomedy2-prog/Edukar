@@ -1,0 +1,141 @@
+<IfModule mod_rewrite.c>
+RewriteEngine On
+
+# Force HTTPS
+RewriteCond %{HTTPS} !=on
+RewriteRule ^(.*)$ https://%{HTTP_HOST}/$1 [R=301,L]
+
+# Default page is index.html (landing page, NOT login)
+DirectoryIndex index.html
+
+# If file exists, serve it directly
+RewriteCond %{REQUEST_FILENAME} -f
+RewriteRule ^ - [L]
+
+# If directory exists, serve it
+RewriteCond %{REQUEST_FILENAME} -d
+RewriteRule ^ - [L]
+
+# If .html version exists, serve it (clean URLs without .html extension)
+RewriteCond %{REQUEST_FILENAME}.html -f
+RewriteRule ^(.*)$ $1.html [L,QSA]
+</IfModule>
+
+# ==================== SECURITY HEADERS ====================
+<IfModule mod_headers.c>
+Header set X-Content-Type-Options "nosniff"
+Header set X-Frame-Options "SAMEORIGIN"
+Header set X-XSS-Protection "1; mode=block"
+Header set Referrer-Policy "strict-origin-when-cross-origin"
+Header set Permissions-Policy "geolocation=(), microphone=(), camera=(), usb=(), magnetometer=(), gyroscope=(), accelerometer=()"
+Header set Strict-Transport-Security "max-age=63072000; includeSubDomains; preload" env=HTTPS
+Header set Cross-Origin-Opener-Policy "same-origin"
+Header set Cross-Origin-Embedder-Policy "credentialless"
+# Content Security Policy — allows CDN fonts/icons and API connection
+Header set Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://fonts.googleapis.com; font-src 'self' https://cdnjs.cloudflare.com https://fonts.gstatic.com; img-src 'self' https: data: blob:; connect-src 'self' https://supadmin.edukar.info; frame-ancestors 'self'; base-uri 'self'; form-action 'self';"
+</IfModule>
+
+# ==================== GZIP COMPRESSION (SPEED) ====================
+<IfModule mod_deflate.c>
+AddOutputFilterByType DEFLATE text/html
+AddOutputFilterByType DEFLATE text/css
+AddOutputFilterByType DEFLATE application/javascript
+AddOutputFilterByType DEFLATE text/javascript
+AddOutputFilterByType DEFLATE application/json
+AddOutputFilterByType DEFLATE text/xml
+AddOutputFilterByType DEFLATE application/xml
+AddOutputFilterByType DEFLATE image/svg+xml
+AddOutputFilterByType DEFLATE application/xhtml+xml
+AddOutputFilterByType DEFLATE text/plain
+AddOutputFilterByType DEFLATE application/vnd.ms-fontobject
+AddOutputFilterByType DEFLATE font/opentype
+AddOutputFilterByType DEFLATE font/ttf
+
+# Don't compress already-compressed files
+SetEnvIfNoCase Request_URI \.(?:gif|jpe?g|png|webp|zip|gz|bz2|rar|mp4|mp3|woff2?)$ no-gzip dont-vary
+</IfModule>
+
+# ==================== BROWSER CACHING (SPEED) ====================
+<IfModule mod_expires.c>
+ExpiresActive On
+# HTML — short cache to get fresh content
+ExpiresByType text/html "access plus 30 minutes"
+# CSS & JS — long cache (versioned by filename or query)
+ExpiresByType text/css "access plus 1 year"
+ExpiresByType application/javascript "access plus 1 year"
+ExpiresByType text/javascript "access plus 1 year"
+# Images — long cache
+ExpiresByType image/jpeg "access plus 1 year"
+ExpiresByType image/png "access plus 1 year"
+ExpiresByType image/webp "access plus 1 year"
+ExpiresByType image/svg+xml "access plus 1 year"
+ExpiresByType image/x-icon "access plus 1 year"
+ExpiresByType image/gif "access plus 1 year"
+# Fonts — very long cache
+ExpiresByType font/woff2 "access plus 1 year"
+ExpiresByType font/woff "access plus 1 year"
+ExpiresByType application/font-woff2 "access plus 1 year"
+ExpiresByType application/font-woff "access plus 1 year"
+ExpiresByType font/ttf "access plus 1 year"
+ExpiresByType font/otf "access plus 1 year"
+# JSON/XML data
+ExpiresByType application/json "access plus 0 seconds"
+ExpiresByType application/xml "access plus 0 seconds"
+</IfModule>
+
+# Cache-Control headers for static assets
+<IfModule mod_headers.c>
+<FilesMatch "\.(css|js|woff2?|ttf|otf|eot|svg|png|jpg|jpeg|gif|webp|ico)$">
+    Header set Cache-Control "public, max-age=31536000, immutable"
+</FilesMatch>
+<FilesMatch "\.(html)$">
+    Header set Cache-Control "public, max-age=1800, must-revalidate"
+</FilesMatch>
+</IfModule>
+
+# ETags — disable to avoid conditional request overhead
+<IfModule mod_headers.c>
+Header unset ETag
+</IfModule>
+FileETag None
+
+# ==================== SECURITY ====================
+# Disable directory listing
+Options -Indexes
+
+# Prevent access to sensitive files
+<FilesMatch "\.(env|git|gitignore|log|json|lock|md|bak|sql|sh|yml|yaml|config|ini|htpasswd)$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# Block access to hidden files (dotfiles)
+<IfModule mod_rewrite.c>
+RewriteCond %{SCRIPT_FILENAME} -d [OR]
+RewriteCond %{SCRIPT_FILENAME} -f
+RewriteRule "(^|/)\." - [F]
+</IfModule>
+
+# Block common attack patterns in query strings
+<IfModule mod_rewrite.c>
+RewriteCond %{QUERY_STRING} (\<|%3C).*script.*(\>|%3E) [NC,OR]
+RewriteCond %{QUERY_STRING} GLOBALS(=|\[|\%[0-9A-Z]{0,2}) [OR]
+RewriteCond %{QUERY_STRING} _REQUEST(=|\[|\%[0-9A-Z]{0,2}) [OR]
+RewriteCond %{QUERY_STRING} (\.\./|\.\.\\) [NC,OR]
+RewriteCond %{QUERY_STRING} (localhost|loopback|127\.0\.0\.1) [NC,OR]
+RewriteCond %{QUERY_STRING} (<|>|'|%0A|%0D|%27|%3C|%3E|%00) [NC,OR]
+RewriteCond %{QUERY_STRING} (union|select|insert|drop|delete|update|concat|benchmark|sleep|load_file)\b [NC]
+RewriteRule .* - [F,L]
+</IfModule>
+
+# ==================== BOT & SCANNER BLOCKING ====================
+<IfModule mod_rewrite.c>
+# Block vulnerability scanners and bad bots
+RewriteCond %{HTTP_USER_AGENT} (havij|libwww-perl|wget|python|nikto|curl|scan|java|winhttp|clshttp|loader|sqlmap|nmap) [NC,OR]
+RewriteCond %{HTTP_USER_AGENT} (;|<|>|'|"|\)|\(|%0A|%0D|%22|%27|%28|%3C|%3E|%00).*(libwww|wget|python|nikto) [NC]
+RewriteRule .* - [F,L]
+</IfModule>
+
+# ==================== REQUEST SIZE LIMITS ====================
+# Prevent large request body DoS attacks (10MB max)
+LimitRequestBody 10485760

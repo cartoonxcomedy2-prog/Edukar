@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>University Detail — EduKar</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <style>
+        .detail-page { width:100% !important; padding:16px 16px 90px !important; box-sizing:border-box !important; max-width:100% !important; margin:0 !important; }
+        .about-text { display:-webkit-box; -webkit-box-orient:vertical; overflow:hidden; font-size:14px; line-height:1.7; color:#475569; margin:0; }
+        .about-text:not(.expanded) { -webkit-line-clamp:3; }
+        .about-text.expanded { -webkit-line-clamp:unset; }
+        .see-more-btn { display:inline-block; margin-top:8px; padding:5px 16px; border:none; border-radius:6px; font-size:12px; font-weight:700; cursor:pointer; background:#F1F5F9; color:#64748B; transition:all .2s; }
+        .see-more-btn:hover { background:#E2E8F0; }
+        .exp-section { margin-bottom:0 !important; border:none !important; box-shadow:none !important; background:transparent !important; border-radius:0 !important; overflow:visible !important; }
+        .exp-section:hover { box-shadow:none !important; transform:none !important; border:none !important; }
+        .exp-header { display:flex !important; align-items:center !important; gap:12px !important; padding:14px 16px !important; background:#fff !important; border:none !important; border-bottom:none !important; border-radius:10px !important; cursor:pointer; transition:all .2s; }
+        .exp-header:hover { background:#F8FAFC !important; }
+        .exp-header.open { background:#F0FDF4 !important; border:none !important; border-bottom:none !important; }
+        .exp-header .icon { width:34px !important; height:34px !important; border-radius:8px; background:#F1F5F9 !important; display:flex; align-items:center; justify-content:center; color:var(--primary); font-size:15px !important; flex-shrink:0; }
+        .exp-header:hover .icon { background:var(--primary) !important; color:#fff !important; transform:none !important; }
+        .exp-header h3 { flex:1; font-size:15px !important; font-weight:700; color:#0F172A; margin:0; }
+        .exp-header .arrow { color:#94A3B8 !important; transition:transform .3s; font-size:12px !important; width:28px !important; height:28px !important; background:#F1F5F9 !important; border-radius:50% !important; display:flex !important; align-items:center !important; justify-content:center !important; }
+        .exp-header.open .arrow { transform:rotate(180deg); background:var(--primary) !important; color:#fff !important; }
+        .exp-body { max-height:0; overflow:hidden; transition:max-height .3s ease; background:#fafbfc !important; }
+        .exp-body.open { max-height:350px; overflow-y:auto; overflow-x:hidden; }
+        .exp-body::-webkit-scrollbar { width:5px; }
+        .exp-body::-webkit-scrollbar-track { background:#f1f1f1; border-radius:4px; }
+        .exp-body::-webkit-scrollbar-thumb { background:#CBD5E1; border-radius:4px; }
+        .exp-body::-webkit-scrollbar-thumb:hover { background:#94A3B8; }
+        .exp-body__inner { padding:14px 16px !important; }
+        .apply-bar { position:fixed !important; bottom:0 !important; left:0 !important; right:0 !important; background:rgba(255,255,255,.96) !important; backdrop-filter:blur(12px) !important; padding:10px 20px !important; z-index:100 !important; border:none !important; border-top:none !important; box-shadow:none !important; }
+        .apply-bar__inner { display:flex !important; align-items:center !important; gap:12px !important; max-width:100% !important; margin:0 !important; padding:0 !important; }
+        .apply-bar__inner .btn { border-radius:12px !important; padding:12px 36px !important; font-weight:800 !important; font-size:14px !important; box-shadow:0 4px 14px rgba(249,115,22,.25) !important; }
+        .prog-item { display:flex; align-items:center; justify-content:space-between; padding:10px 12px; background:#F8FAFC; border:1px solid #E2E8F0; border-radius:10px; margin-bottom:4px; cursor:pointer; transition:all .2s; }
+        .prog-item:hover { background:#F0FDF4; border-color:#86EFAC; }
+        .prog-item.selected { background:#F0FDF4; border-color:#22C55E; }
+        .prog-item__name { font-size:13px; font-weight:700; color:#0F172A; }
+        .prog-item__dur { font-size:11px; color:#94A3B8; }
+        .tabs { display:flex; gap:4px; margin-bottom:10px; }
+        .tab-btn { padding:6px 14px; border:1px solid #E2E8F0; border-radius:8px; background:#fff; font-size:12px; font-weight:700; color:#64748B; cursor:pointer; }
+        .tab-btn.active { background:var(--primary); color:#fff; border-color:var(--primary); }
+    </style>
+
+    <!-- Comprehensive SEO Meta Tags for EduKar -->
+    <meta name="description" content="EduKar is Pakistan's premier education portal. Find top universities, discover fully-funded scholarships, and track your admission applications seamlessly in one place.">
+    <meta name="keywords" content="EduKar, Edukar Pakistan, scholarships in Pakistan, top universities in Pakistan, higher education, online admission portal, apply for university, study in Pakistan, education platform, best scholarship portal, admission 2026, EduKar admission, student portal">
+    <meta name="author" content="EduKar Platform">
+    <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1">
+    
+    <!-- Open Graph / Social Media Meta Tags -->
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="EduKar | Top Universities & Scholarships in Pakistan">
+    <meta property="og:description" content="EduKar is your ultimate gateway to top universities and fully-funded scholarships. Apply online and track your applications securely.">
+    <meta property="og:site_name" content="EduKar">
+    
+    <!-- Twitter Meta Tags -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="EduKar | Top Universities & Scholarships">
+    <meta name="twitter:description" content="Your ultimate gateway to top universities and scholarships. Apply online and track applications.">
+
+
+    <!-- Auth guard: redirect to login BEFORE body renders if not logged in -->
+    <script>
+        (function() {
+            var token = localStorage.getItem('st_token');
+            var loginAt = parseInt(localStorage.getItem('st_login_at') || '0', 10);
+            var maxAge = 7 * 24 * 60 * 60 * 1000;
+            if (!token || !loginAt || (Date.now() - loginAt) > maxAge) {
+                localStorage.removeItem('st_token');
+                localStorage.removeItem('st_user');
+                localStorage.removeItem('st_login_at');
+                document.documentElement.style.display = 'none';
+                window.location.replace('login.html');
+            }
+        })();
+    </script>
+</head>
+<body style="visibility:hidden; opacity:0;">
+<div class="detail-page" id="detailPage"><div class="page-loader"><div class="loader"></div></div></div>
+<div class="apply-bar" id="applyBar" style="display:none !important;"></div>
+<div class="apply-overlay" id="applyOverlay"><div class="apply-dialog" id="applyDialog"></div></div>
+<script src="js/config.js"></script>
+<script src="js/dashboard-nav.js"></script>
+<script src="js/university-detail.js"></script>
+</body>
+</html>

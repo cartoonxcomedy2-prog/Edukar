@@ -1,0 +1,1361 @@
+const path = require('path');
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
+const User = require('../models/User');
+const { sendEmail, getWelcomeEmailHTML } = require('../utils/emailUtils');
+const Application = require('../models/Application');
+const University = require('../models/University');
+const Scholarship = require('../models/Scholarship');
+const {
+    deleteUploadedFile,
+    downloadStoredFile,
+    uploadToCloudinary,
+} = require('../utils/uploadFileUtils');
+const { invalidateCacheByTags } = require('../middleware/responseCache');
+
+const DEFAULT_COUNTRY = 'Pakistan';
+
+const PROFILE_FIELDS = [
+    'name',
+    'email',
+    'role',
+    'phone',
+    'countryCode',
+    'country',
+    'age',
+    'fatherName',
+    'address',
+    'state',
+    'city',
+    'dateOfBirth',
+    'avatar',
+    'education',
+    'notifications',
+    'isActive',
+    'createdAt',
+    'updatedAt',
+];
+
+const EDUCATION_FILE_FIELD_MAP = {
+    idFile: ['nationalId', 'file'],
+    matricTranscript: ['matric', 'transcript'],
+    matricCertificate: ['matric', 'certificate'],
+    interTranscript: ['intermediate', 'transcript'],
+    interCertificate: ['intermediate', 'certificate'],
+    bachTranscript: ['bachelor', 'transcript'],
+    bachCertificate: ['bachelor', 'certificate'],
+    masterTranscript: ['masters', 'transcript'],
+    masterCertificate: ['masters', 'certificate'],
+    passportPdf: ['international', 'passportPdf'],
+    testTranscript: ['international', 'testTranscript'],
+    cv: ['international', 'cv'],
+    recommendationLetter: ['international', 'recommendationLetter'],
+    fatherCnicFile: ['personalInfo', 'fatherCnicFile'],
+};
+
+const EDUCATION_FILE_LABEL_MAP = {
+    idFile: 'national-id',
+    matricTranscript: 'matric-transcript',
+    matricCertificate: 'matric-certificate',
+    interTranscript: 'intermediate-transcript',
+    interCertificate: 'intermediate-certificate',
+    bachTranscript: 'bachelor-transcript',
+    bachCertificate: 'bachelor-certificate',
+    masterTranscript: 'masters-transcript',
+    masterCertificate: 'masters-certificate',
+    passportPdf: 'passport',
+    testTranscript: 'english-test-transcript',
+    cv: 'curriculum-vitae',
+    recommendationLetter: 'recommendation-letter',
+    fatherCnicFile: 'father-cnic',
+};
+
+const EDUCATION_DOWNLOAD_FIELD_MAP = {
+    nationalId: new Set(['file']),
+    personalInfo: new Set(['fatherCnicFile']),
+    matric: new Set(['transcript', 'certificate']),
+    intermediate: new Set(['transcript', 'certificate']),
+    bachelor: new Set(['transcript', 'certificate']),
+    masters: new Set(['transcript', 'certificate']),
+    international: new Set([
+        'passportPdf',
+        'testTranscript',
+        'cv',
+        'recommendationLetter',
+    ]),
+};
+
+const EDUCATION_DOWNLOAD_LABEL_MAP = {
+    personalInfo: {
+        fatherCnicFile: 'father-cnic',
+    },
+    nationalId: {
+        file: 'national-id',
+        fatherCnicFile: 'father-cnic',
+    },
+    matric: {
+        transcript: 'matric-transcript',
+        certificate: 'matric-certificate',
+    },
+    intermediate: {
+        transcript: 'intermediate-transcript',
+        certificate: 'intermediate-certificate',
+    },
+    bachelor: {
+        transcript: 'bachelor-transcript',
+        certificate: 'bachelor-certificate',
+    },
+    masters: {
+        transcript: 'masters-transcript',
+        certificate: 'masters-certificate',
+    },
+    international: {
+        passportPdf: 'passport',
+        testTranscript: 'english-test-transcript',
+        cv: 'curriculum-vitae',
+        recommendationLetter: 'recommendation-letter',
+    },
+};
+
+const EDUCATION_FILE_PATHS = Object.values(EDUCATION_FILE_FIELD_MAP).map((parts) =>
+    parts.join('.')
+);
+
+const REMINDER_CHECK_COOLDOWN_MS = 10 * 60 * 1000;
+const MAX_REMINDER_MAP_SIZE = 5000;
+const reminderLastCheckedAt = new Map();
+
+const pruneReminderMap = () => {
+    if (reminderLastCheckedAt.size <= MAX_REMINDER_MAP_SIZE) return;
+    const now = Date.now();
+    for (const [key, ts] of reminderLastCheckedAt.entries()) {
+        if (now - ts > REMINDER_CHECK_COOLDOWN_MS * 6) reminderLastCheckedAt.delete(key);
+    }
+    if (reminderLastCheckedAt.size > MAX_REMINDER_MAP_SIZE) {
+        const entries = [...reminderLastCheckedAt.entries()].sort((a, b) => a[1] - b[1]);
+        for (let i = 0; i < Math.floor(entries.length / 2); i++) reminderLastCheckedAt.delete(entries[i][0]);
+    }
+};
+const DUMMY_PASSWORD_HASH =
+    '$2b$10$EixZaYVK1fsbw1ZfbX3OXePaWxn96p36f7M1E4J4Yx3fRbN7b58w2';
+
+const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
+
+const invalidateUserCaches = (userId) => {
+    const tags = ['users-list', 'applications-summary', 'applications-admin-list', 'applications-user-list'];
+    const safeId = String(userId || '').trim();
+    if (safeId) {
+        tags.push(`users-id:${safeId}`);
+    }
+    invalidateCacheByTags(tags);
+};
+
+const escapeRegex = (value) =>
+    String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+const toPositiveInt = (value, fallback) => {
+    const parsed = Number.parseInt(value, 10);
+    if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+    return parsed;
+};
+
+const sanitizeFileNamePart = (value, fallback = 'document') =>
+    String(value || '')
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 60) || fallback;
+
+const getEducationDownloadLabel = (section, field) =>
+    EDUCATION_DOWNLOAD_LABEL_MAP?.[section]?.[field] || field;
+
+const resolveEducationStoragePath = (section, field) => {
+    const safeSection = String(section || '').trim();
+    const safeField = String(field || '').trim();
+    if (!safeSection || !safeField) return null;
+
+    if (safeField === 'fatherCnicFile') {
+        if (safeSection !== 'personalInfo' && safeSection !== 'nationalId') {
+            return null;
+        }
+        return {
+            section: 'personalInfo',
+            field: 'fatherCnicFile',
+        };
+    }
+
+    const allowed = EDUCATION_DOWNLOAD_FIELD_MAP[safeSection];
+    if (!allowed || !allowed.has(safeField)) return null;
+    return {
+        section: safeSection,
+        field: safeField,
+    };
+};
+
+const MAX_PROFILE_APPLICATIONS = toPositiveInt(
+    process.env.USER_PROFILE_APPS_LIMIT,
+    200
+);
+
+const flattenUploadedFiles = (filesInput) => {
+    if (Array.isArray(filesInput)) return filesInput;
+    if (filesInput && typeof filesInput === 'object') {
+        return Object.values(filesInput).flatMap((entry) =>
+            Array.isArray(entry) ? entry : []
+        );
+    }
+    return [];
+};
+
+const parseDeadlineDate = (rawDate) => {
+    if (!rawDate) return null;
+    const parsed = new Date(rawDate);
+    if (Number.isNaN(parsed.getTime())) return null;
+    parsed.setHours(23, 59, 59, 999);
+    return parsed;
+};
+
+const formatReminderDeadline = (date) =>
+    date.toLocaleDateString('en-GB', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+    });
+
+const buildReminderTitle = (daysRemaining) => {
+    if (daysRemaining <= 0) return 'Deadline Today';
+    if (daysRemaining === 1) return 'Deadline Tomorrow';
+    return 'Deadline in 2 Days';
+};
+
+const buildReminderBody = (entityName, dateLabel) =>
+    `Apply now for ${entityName}. Deadline is ${dateLabel}. Don't miss this opportunity.`;
+
+const filterNotificationsByRetention = (notifications = []) => {
+    return Array.isArray(notifications) ? notifications : [];
+};
+
+const ensureDeadlineRemindersForUser = async (userInput, options = {}) => {
+    if (!userInput?._id) return userInput;
+
+    const { force = false } = options;
+    const userId = String(userInput._id);
+    const now = Date.now();
+    const lastCheckedAt = reminderLastCheckedAt.get(userId) || 0;
+
+    if (!force && now - lastCheckedAt < REMINDER_CHECK_COOLDOWN_MS) {
+        return userInput;
+    }
+
+    reminderLastCheckedAt.set(userId, now);
+    pruneReminderMap();
+
+    const user =
+        typeof userInput.save === 'function'
+            ? userInput
+            : await User.findById(userId).select('notifications');
+
+    if (!user) return userInput;
+
+    let notifications = Array.isArray(user.notifications) ? [...user.notifications] : [];
+    notifications = filterNotificationsByRetention(notifications);
+    const existingReminderKeys = new Set(
+        notifications
+            .map((item) => item?.data?.reminderKey)
+            .filter((key) => typeof key === 'string' && key.trim())
+    );
+
+    const apps = await Application.find({
+        user: user._id,
+        isReapplyEligible: { $ne: true },
+    })
+        .select('university scholarship')
+        .lean();
+
+    const appliedUniversityIds = new Set(
+        apps
+            .map((app) => app?.university)
+            .filter(Boolean)
+            .map((id) => String(id))
+    );
+    const appliedScholarshipIds = new Set(
+        apps
+            .map((app) => app?.scholarship)
+            .filter(Boolean)
+            .map((id) => String(id))
+    );
+
+    const [universities, scholarships] = await Promise.all([
+        University.find({
+            isActive: true,
+            deadline: { $exists: true, $nin: ['', null] },
+        })
+            .select('_id name deadline thumbnail logo')
+            .lean(),
+        Scholarship.find({
+            isActive: true,
+            deadline: { $exists: true, $nin: ['', null] },
+        })
+            .select('_id title deadline thumbnail image')
+            .lean(),
+    ]);
+
+    const nowDate = new Date();
+    const MS_PER_DAY = 24 * 60 * 60 * 1000;
+    const generated = [];
+
+    for (const uni of universities) {
+        const uniId = String(uni._id);
+        if (appliedUniversityIds.has(uniId)) continue;
+
+        const deadlineDate = parseDeadlineDate(uni.deadline);
+        if (!deadlineDate) continue;
+
+        const daysRemaining = Math.ceil(
+            (deadlineDate.getTime() - nowDate.getTime()) / MS_PER_DAY
+        );
+        if (daysRemaining < 0 || daysRemaining > 2) continue;
+
+        const deadlineKey = deadlineDate.toISOString().slice(0, 10);
+        const reminderKey = `deadline-university-${uniId}-${deadlineKey}`;
+        if (existingReminderKeys.has(reminderKey)) continue;
+
+        const formattedDate = formatReminderDeadline(deadlineDate);
+        generated.push({
+            title: buildReminderTitle(daysRemaining),
+            body: buildReminderBody(uni.name || 'this university', formattedDate),
+            type: 'deadline-reminder',
+            entityType: 'university',
+            entityId: uniId,
+            entityName: uni.name || 'University',
+            entityThumbnail: uni.thumbnail || uni.logo || '',
+            isRead: false,
+            createdAt: new Date(),
+            data: {
+                type: 'deadline-reminder',
+                entityType: 'university',
+                entityId: uniId,
+                entityName: uni.name || 'University',
+                status: 'Closing Soon',
+                deadline: uni.deadline,
+                reminderKey,
+            },
+        });
+        existingReminderKeys.add(reminderKey);
+    }
+
+    for (const scholarship of scholarships) {
+        const scholarshipId = String(scholarship._id);
+        if (appliedScholarshipIds.has(scholarshipId)) continue;
+
+        const deadlineDate = parseDeadlineDate(scholarship.deadline);
+        if (!deadlineDate) continue;
+
+        const daysRemaining = Math.ceil(
+            (deadlineDate.getTime() - nowDate.getTime()) / MS_PER_DAY
+        );
+        if (daysRemaining < 0 || daysRemaining > 2) continue;
+
+        const deadlineKey = deadlineDate.toISOString().slice(0, 10);
+        const reminderKey = `deadline-scholarship-${scholarshipId}-${deadlineKey}`;
+        if (existingReminderKeys.has(reminderKey)) continue;
+
+        const formattedDate = formatReminderDeadline(deadlineDate);
+        generated.push({
+            title: buildReminderTitle(daysRemaining),
+            body: buildReminderBody(scholarship.title || 'this scholarship', formattedDate),
+            type: 'deadline-reminder',
+            entityType: 'scholarship',
+            entityId: scholarshipId,
+            entityName: scholarship.title || 'Scholarship',
+            entityThumbnail: scholarship.thumbnail || scholarship.image || '',
+            isRead: false,
+            createdAt: new Date(),
+            data: {
+                type: 'deadline-reminder',
+                entityType: 'scholarship',
+                entityId: scholarshipId,
+                entityName: scholarship.title || 'Scholarship',
+                status: 'Closing Soon',
+                deadline: scholarship.deadline,
+                reminderKey,
+            },
+        });
+        existingReminderKeys.add(reminderKey);
+    }
+
+    if (generated.length === 0) {
+        return userInput;
+    }
+
+    const mergedNotifications = [...generated, ...notifications]
+        .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
+        .slice(0, 200);
+
+    user.notifications = mergedNotifications;
+    await user.save();
+
+    if (typeof userInput === 'object' && userInput !== null) {
+        userInput.notifications = mergedNotifications;
+    }
+
+    return userInput;
+};
+
+const generateToken = (userOrId) => {
+    const id =
+        userOrId && typeof userOrId === 'object'
+            ? String(userOrId._id || '')
+            : String(userOrId || '');
+    const sessionVersion =
+        userOrId && typeof userOrId === 'object'
+            ? Number(userOrId.sessionVersion || 0)
+            : 0;
+
+    return jwt.sign({ id, sv: sessionVersion }, process.env.JWT_SECRET, {
+        expiresIn: process.env.JWT_EXPIRES_IN || '30d',
+    });
+};
+
+const parsePossibleJSON = (value, fallback = null) => {
+    if (value == null) return fallback;
+    if (typeof value !== 'string') return value;
+    try {
+        return JSON.parse(value);
+    } catch {
+        return fallback;
+    }
+};
+
+const normalizePhone = (value) =>
+    String(value || '')
+        .trim()
+        .replace(/\s+/g, '')
+        .replace(/-/g, '');
+
+const setNested = (obj, path, value) => {
+    let current = obj;
+    for (let i = 0; i < path.length - 1; i += 1) {
+        if (!current[path[i]] || typeof current[path[i]] !== 'object') {
+            current[path[i]] = {};
+        }
+        current = current[path[i]];
+    }
+    current[path[path.length - 1]] = value;
+};
+
+const getNested = (obj, path = []) => {
+    let current = obj;
+    for (const key of path) {
+        if (!current || typeof current !== 'object') return undefined;
+        current = current[key];
+    }
+    return current;
+};
+
+const removeReplacedEducationFiles = async (previous = {}, next = {}) => {
+    const currentFiles = new Set(
+        EDUCATION_FILE_PATHS.map((dotPath) =>
+            dotPath.split('.').reduce((acc, part) => acc?.[part], next)
+        ).filter((value) => typeof value === 'string' && value.trim())
+    );
+
+    for (const dotPath of EDUCATION_FILE_PATHS) {
+        const parts = dotPath.split('.');
+        const oldFile = parts.reduce((acc, part) => acc?.[part], previous);
+        const nextFile = parts.reduce((acc, part) => acc?.[part], next);
+        if (
+            typeof oldFile === 'string' &&
+            oldFile.trim() &&
+            oldFile !== nextFile &&
+            !currentFiles.has(oldFile)
+        ) {
+            await deleteUploadedFile(oldFile);
+        }
+    }
+};
+
+const toResponseUser = async (userDoc, withApplications = false) => {
+    const user = userDoc.toObject ? userDoc.toObject() : { ...userDoc };
+    delete user.password;
+
+    const filteredUser = { _id: user._id };
+    PROFILE_FIELDS.forEach((field) => {
+        if (typeof user[field] !== 'undefined') {
+            filteredUser[field] = user[field];
+        }
+    });
+
+    if (!Array.isArray(filteredUser.notifications)) {
+        filteredUser.notifications = [];
+    }
+
+    filteredUser.country = filteredUser.country || DEFAULT_COUNTRY;
+    const personalInfo = filteredUser.education?.personalInfo || {};
+    if (!filteredUser.fatherName && personalInfo.fatherName) {
+        filteredUser.fatherName = personalInfo.fatherName;
+    }
+    if (!filteredUser.phone && personalInfo.contactNumber) {
+        filteredUser.phone = personalInfo.contactNumber;
+    }
+    if (!filteredUser.dateOfBirth && personalInfo.dateOfBirth) {
+        filteredUser.dateOfBirth = personalInfo.dateOfBirth;
+    }
+
+    filteredUser.notifications = (Array.isArray(filteredUser.notifications)
+        ? filteredUser.notifications
+        : []
+    ).sort(
+        (a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)
+    );
+
+    if (withApplications) {
+        const docs = await Application.find({ user: user._id })
+            .select(
+                [
+                    'university',
+                    'scholarship',
+                    'type',
+                    'status',
+                    'isReapplyEligible',
+                    'selectedPrograms',
+                    'appliedAt',
+                    'admitCard',
+                    'offerLetter',
+                    'testDate',
+                    'interviewDate',
+                    'offeredUniversities',
+                    'updatedAt',
+                    'createdAt',
+                ].join(' ')
+            )
+            .populate(
+                'university',
+                'name thumbnail logo city state country address applicationSteps testDate interviewDate programs'
+            )
+            .populate(
+                'scholarship',
+                'title thumbnail image city state country address university_name applicationSteps testDate interviewDate programs'
+            )
+            .populate(
+                'offeredUniversities.university',
+                'name thumbnail logo city state country address applicationSteps testDate interviewDate programs'
+            )
+            .sort('-appliedAt')
+            .limit(MAX_PROFILE_APPLICATIONS + 1)
+            .lean();
+
+        filteredUser.applications = docs.slice(0, MAX_PROFILE_APPLICATIONS);
+        filteredUser.applicationsMeta = {
+            limit: MAX_PROFILE_APPLICATIONS,
+            hasMore: docs.length > MAX_PROFILE_APPLICATIONS,
+        };
+    }
+
+    return filteredUser;
+};
+
+const upsertEducationFromPayload = (user, educationPayload) => {
+    if (!educationPayload || typeof educationPayload !== 'object') return;
+    if (!user.education || typeof user.education !== 'object') user.education = {};
+
+    const sections = [
+        'personalInfo',
+        'nationalId',
+        'matric',
+        'intermediate',
+        'bachelor',
+        'masters',
+        'international',
+    ];
+
+    for (const section of sections) {
+        if (educationPayload[section] !== undefined) {
+            // Overwrite the section to allow field removal
+            user.education[section] = educationPayload[section];
+        }
+    }
+    if (!user.education.nationalId) user.education.nationalId = {};
+    user.education.nationalId.country = DEFAULT_COUNTRY;
+};
+
+const assignEducationFiles = async (user, files = []) => {
+    if (!files || !files.length) return;
+    const education = JSON.parse(JSON.stringify(user.education || {}));
+
+    for (const file of files) {
+        const pathParts = EDUCATION_FILE_FIELD_MAP[file.fieldname];
+        if (!pathParts) {
+            await deleteUploadedFile(file.path);
+            continue;
+        }
+        const previousFile = getNested(education, pathParts);
+        const fileLabel = EDUCATION_FILE_LABEL_MAP[file.fieldname] || file.fieldname;
+        
+        const renamed = await uploadToCloudinary(file.path, [user?.name || 'applicant',
+            'education',
+            fileLabel,
+        ], { originalName: file.originalname });
+        if (!renamed) {
+            await deleteUploadedFile(file.path);
+            const original = String(file.originalname || '').trim();
+            throw new Error(
+                `Failed to upload ${file.fieldname}${original ? ` (${original})` : ''}`
+            );
+        }
+        
+        setNested(education, pathParts, renamed);
+        if (previousFile && previousFile !== renamed) {
+            await deleteUploadedFile(previousFile);
+        }
+    }
+
+    user.education = education;
+};
+
+// @desc    Auth user & get token
+// @route   POST /api/users/login
+const authUser = async (req, res) => {
+    const email = normalizeEmail(req.body.email);
+    const password = String(req.body.password || '');
+
+    const user = await User.findOne({ email }).select('+password');
+    
+    const isPasswordValid = user
+        ? await user.matchPassword(password)
+        : await bcrypt.compare(password, DUMMY_PASSWORD_HASH);
+
+    if (user && isPasswordValid) {
+        if (user.isActive === false) {
+            return res.status(403).json({
+                message: 'Your account is inactive. Please contact support.',
+            });
+        }
+
+        // NOTE: We no longer increment sessionVersion on login.
+        // Incrementing it invalidated existing tokens on other devices,
+        // causing users to get logged out whenever they re-opened the app.
+        // sessionVersion is only changed when the user explicitly resets
+        // their password or an admin forces a session invalidation.
+
+        const includeApplications = false;
+        const userResponse = await toResponseUser(user, includeApplications);
+        ensureDeadlineRemindersForUser(user).catch((error) => {
+            console.error('Reminder generation warning:', error.message);
+        });
+        return res.json({
+            ...userResponse,
+            token: generateToken(user),
+        });
+    }
+
+    return res.status(401).json({ message: 'Invalid email or password' });
+};
+
+// @desc    Register a new user
+// @route   POST /api/users
+const registerUser = async (req, res) => {
+    const email = normalizeEmail(req.body.email);
+    const userExists = await User.findOne({ email });
+
+    if (userExists) {
+        return res.status(400).json({ message: 'User already exists' });
+    }
+
+    const normalizedPhone = normalizePhone(req.body.phone);
+    if (normalizedPhone) {
+        const phoneExists = await User.findOne({ phone: normalizedPhone });
+        if (phoneExists) {
+            return res.status(400).json({ message: 'Mobile number already exists' });
+        }
+    }
+
+    const payload = {
+        name: req.body.name,
+        email,
+        password: req.body.password,
+        phone: normalizedPhone || undefined,
+        country: DEFAULT_COUNTRY,
+        role: 'user',
+    };
+
+    const user = await User.create(payload);
+
+    if (!user) {
+        return res.status(400).json({ message: 'Invalid user data' });
+    }
+
+    
+    // Send Welcome Email
+    try {
+        const eHtml = getWelcomeEmailHTML(user.name);
+        sendEmail(user.email, '🎉 Welcome to EduKar!', eHtml);
+    } catch(ee) { console.error('Email error:', ee); }
+    
+    const userResponse = await toResponseUser(user, true);
+    return res.status(201).json({
+        ...userResponse,
+        token: generateToken(user),
+    });
+};
+
+// @desc    Get user profile with applications
+// @route   GET /api/users/profile
+const getUserProfile = async (req, res) => {
+    const user = await User.findById(req.user._id);
+    if (!user) {
+        return res.status(404).json({ message: 'User not found' });
+    }
+
+    ensureDeadlineRemindersForUser(user).catch((error) => {
+        console.error('Reminder generation warning:', error.message);
+    });
+    const userResponse = await toResponseUser(user, true);
+    return res.json(userResponse);
+};
+
+// @desc    Update own profile
+// @route   PUT /api/users/profile
+const updateUserProfile = async (req, res) => {
+    try {
+        const user = await User.findById(req.user._id).select('+password');
+
+        if (!user) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+        const previousEducation =
+            user.education && typeof user.education === 'object'
+                ? JSON.parse(JSON.stringify(user.education))
+                : {};
+
+        const {
+            name,
+            email,
+            password,
+            fatherName,
+            dateOfBirth,
+            phone,
+            age,
+            city,
+            state,
+            address,
+            avatar,
+        } = req.body;
+
+        const normalizedEmail =
+            typeof email === 'string' && email.trim()
+                ? normalizeEmail(email)
+                : '';
+
+        if (normalizedEmail && normalizedEmail !== user.email) {
+            const emailTaken = await User.findOne({
+                email: normalizedEmail,
+                _id: { $ne: user._id },
+            });
+            if (emailTaken) {
+                return res.status(400).json({ message: 'Email already in use' });
+            }
+            user.email = normalizedEmail;
+        }
+
+        const normalizedPhone = typeof phone === 'string' ? normalizePhone(phone) : null;
+        if (normalizedPhone !== null) {
+            if (normalizedPhone) {
+                const phoneTaken = await User.findOne({
+                    _id: { $ne: user._id },
+                    phone: normalizedPhone,
+                });
+                if (phoneTaken) {
+                    return res.status(400).json({ message: 'Mobile number already exists' });
+                }
+            }
+            user.phone = normalizedPhone;
+        }
+
+        if (typeof name === 'string') user.name = name;
+        if (typeof city === 'string') user.city = city;
+        if (typeof state === 'string') user.state = state;
+        if (typeof address === 'string') user.address = address;
+        if (typeof avatar === 'string' && avatar.trim()) {
+            if (avatar.startsWith('data:')) {
+                const oldAvatar = user.avatar;
+                user.avatar = await uploadToCloudinary(avatar, [user.name, 'avatar']);
+                if (!user.avatar) {
+                    throw new Error('Failed to upload avatar');
+                }
+                if (oldAvatar && user.avatar !== oldAvatar) {
+                    await deleteUploadedFile(oldAvatar);
+                }
+            } else {
+                user.avatar = avatar;
+            }
+        }
+        if (typeof age !== 'undefined') user.age = age;
+        user.country = DEFAULT_COUNTRY;
+
+        if (typeof password === 'string' && password.trim()) {
+            user.password = password.trim();
+        }
+
+        const educationPayload = parsePossibleJSON(req.body.education, req.body.education);
+
+        // ─── IDENTITY LOCK: If user has active applications, prevent identity field changes ───
+        // This is server-side enforcement (defense-in-depth) — frontend also locks these fields.
+        // Admin route (updateUserByAdmin) is NOT affected — admin can always edit.
+        const appCount = await Application.countDocuments({ user: user._id });
+        const identityLocked = appCount > 0;
+
+        if (identityLocked && educationPayload && typeof educationPayload === 'object') {
+            // Strip locked identity sections from the education payload
+            delete educationPayload.personalInfo;
+            delete educationPayload.nationalId;
+        }
+
+        upsertEducationFromPayload(user, educationPayload);
+
+        if (!user.education || typeof user.education !== 'object') user.education = {};
+        if (!user.education.personalInfo || typeof user.education.personalInfo !== 'object') {
+            user.education.personalInfo = {};
+        }
+
+        if (!identityLocked) {
+            if (typeof fatherName === 'string') {
+                user.fatherName = fatherName;
+                user.education.personalInfo.fatherName = fatherName;
+            }
+            if (typeof dateOfBirth === 'string') {
+                user.dateOfBirth = dateOfBirth;
+                user.education.personalInfo.dateOfBirth = dateOfBirth;
+            }
+            if (typeof phone === 'string') {
+                user.education.personalInfo.contactNumber = normalizePhone(phone);
+            }
+            if (typeof user.education.nationalId?.idNumber === 'string' && user.education.nationalId.idNumber.trim()) {
+                user.education.personalInfo.cnicNumber = user.education.nationalId.idNumber;
+            }
+        } else {
+            // Even when locked, phone sync is safe (phone is not an identity field)
+            if (typeof phone === 'string') {
+                user.education.personalInfo.contactNumber = normalizePhone(phone);
+            }
+        }
+        if (!user.education.nationalId || typeof user.education.nationalId !== 'object') {
+            user.education.nationalId = {};
+        }
+        user.education.nationalId.country = DEFAULT_COUNTRY;
+
+        // Filter out identity file uploads when locked
+        const LOCKED_FILE_FIELDS = ['idFile', 'fatherCnicFile'];
+        let uploadedFiles = flattenUploadedFiles(req.files);
+        if (identityLocked) {
+            uploadedFiles = uploadedFiles.filter(f => !LOCKED_FILE_FIELDS.includes(f.fieldname));
+        }
+        await assignEducationFiles(user, uploadedFiles);
+        await removeReplacedEducationFiles(previousEducation, user.education || {});
+
+        user.markModified('education');
+        await user.save();
+
+        // Sync to active (non-final) applications to avoid "Zombie Docs" while keeping completed ones frozen
+        const snapshot = JSON.parse(JSON.stringify(user.education || {}));
+        snapshot.personalInfoSnapshot = snapshot.personalInfo || {};
+        await Application.updateMany(
+            { 
+                user: user._id, 
+                status: { $nin: ['Selected', 'Rejected'] } 
+            },
+            { 
+                $set: { educationSnapshot: snapshot } 
+            }
+        );
+
+        const userResponse = await toResponseUser(user, false);
+        invalidateUserCaches(user._id);
+        return res.json(userResponse);
+    } catch (error) {
+        return res.status(400).json({ message: error.message });
+    }
+};
+
+// @desc    Get all users (admin panel)
+// @route   GET /api/users
+// @access  Private/Admin
+const getUsers = async (req, res) => {
+    try {
+        const search = String(req.query.search || '').trim();
+        const query = { role: 'user' };
+        if (search) {
+            const pattern = new RegExp(escapeRegex(search), 'i');
+            query.$or = [
+                { name: pattern },
+                { email: pattern },
+                { phone: pattern },
+                { country: pattern },
+                { state: pattern },
+                { city: pattern },
+            ];
+        }
+
+        const page = toPositiveInt(req.query.page, 1);
+        const limit = Math.min(toPositiveInt(req.query.limit, 20), 100);
+        const skip = (page - 1) * limit;
+        const listSelect =
+            'name email phone country state city isActive createdAt updatedAt';
+
+        const [users, total] = await Promise.all([
+            User.find(query)
+                .select(listSelect)
+                .sort({ createdAt: -1 })
+                .skip(skip)
+                .limit(limit)
+                .lean(),
+            User.countDocuments(query),
+        ]);
+
+        return res.json({
+            data: users,
+            pagination: {
+                page,
+                limit,
+                total,
+                totalPages: Math.ceil(total / limit),
+            },
+        });
+    } catch (error) {
+        return res.status(500).json({ message: error.message });
+
+    }
+};
+
+// @desc    Get single user by id (admin)
+// @route   GET /api/users/:id
+const getUserById = async (req, res) => {
+    try {
+        const user = await User.findById(req.params.id);
+        if (!user) return res.status(404).json({ message: 'User not found' });
+
+        const userResponse = await toResponseUser(user, false);
+        return res.json({ data: userResponse });
+    } catch (error) {
+        return res.status(500).json({ message: error.message });
+    }
+};
+
+// @desc    Update user profile by admin
+// @route   PUT /api/users/:id/profile
+// @access  Private/Admin
+const updateUserByAdmin = async (req, res) => {
+    try {
+        const user = await User.findById(req.params.id).select('+password');
+
+        if (!user) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+
+        const previousEducation = JSON.parse(JSON.stringify(user.education || {}));
+
+        const {
+            name,
+            email,
+            password,
+            fatherName,
+            dateOfBirth,
+            phone,
+            age,
+            city,
+            state,
+            address,
+            isActive,
+            avatar,
+            education,
+        } = req.body;
+
+        const normalizedEmail =
+            typeof email === 'string' && email.trim()
+                ? normalizeEmail(email)
+                : '';
+        if (normalizedEmail && normalizedEmail !== user.email) {
+            const emailTaken = await User.findOne({
+                email: normalizedEmail,
+                _id: { $ne: user._id },
+            });
+            if (emailTaken) {
+                return res.status(400).json({ message: 'Email already in use' });
+            }
+            user.email = normalizedEmail;
+        }
+
+        const normalizedPhone = typeof phone === 'string' ? normalizePhone(phone) : null;
+        if (normalizedPhone !== null) {
+            if (normalizedPhone) {
+                const phoneTaken = await User.findOne({
+                    _id: { $ne: user._id },
+                    phone: normalizedPhone,
+                });
+                if (phoneTaken) {
+                    return res.status(400).json({ message: 'Mobile number already exists' });
+                }
+            }
+            user.phone = normalizedPhone;
+        }
+
+        if (typeof name === 'string') user.name = name;
+        if (typeof city === 'string') user.city = city;
+        if (typeof state === 'string') user.state = state;
+        if (typeof address === 'string') user.address = address;
+        if (typeof avatar === 'string' && avatar.trim()) {
+            if (avatar.startsWith('data:')) {
+                const oldAvatar = user.avatar;
+                user.avatar = await uploadToCloudinary(avatar, [user.name, 'avatar']);
+                if (!user.avatar) {
+                    throw new Error('Failed to upload avatar');
+                }
+                if (oldAvatar && user.avatar !== oldAvatar) {
+                    await deleteUploadedFile(oldAvatar);
+                }
+            } else {
+                user.avatar = avatar;
+            }
+        }
+
+        if (typeof age !== 'undefined') user.age = age;
+        if (typeof isActive === 'boolean') user.isActive = isActive;
+        user.country = DEFAULT_COUNTRY;
+
+        if (typeof password === 'string' && password.trim()) {
+            user.password = password.trim();
+        }
+
+        if (!user.education || typeof user.education !== 'object') user.education = {};
+        if (!user.education.personalInfo || typeof user.education.personalInfo !== 'object') {
+            user.education.personalInfo = {};
+        }
+        if (!user.education.nationalId || typeof user.education.nationalId !== 'object') {
+            user.education.nationalId = {};
+        }
+        user.education.nationalId.country = DEFAULT_COUNTRY;
+
+        if (typeof fatherName === 'string') {
+            user.fatherName = fatherName;
+            user.education.personalInfo.fatherName = fatherName;
+        }
+        if (typeof dateOfBirth === 'string') {
+            user.dateOfBirth = dateOfBirth;
+            user.education.personalInfo.dateOfBirth = dateOfBirth;
+        }
+        if (typeof phone === 'string') {
+            user.education.personalInfo.contactNumber = normalizePhone(phone);
+        }
+
+        if (education && typeof education === 'object') {
+            for (const section in education) {
+                if (education[section] && typeof education[section] === 'object') {
+                    // Replace the section entirely to ensure "old data is cut"
+                    user.education[section] = education[section];
+                }
+            }
+            user.markModified('education');
+        }
+
+        // Cleanup orphaned PDFs
+        await removeReplacedEducationFiles(previousEducation, user.education || {});
+
+        await user.save();
+
+        const userResponse = await toResponseUser(user, false);
+        invalidateUserCaches(user._id);
+        return res.json({ data: userResponse });
+    } catch (error) {
+        return res.status(400).json({ message: error.message });
+    }
+};
+
+// @desc    Update user education by admin (or owner)
+// @route   PUT /api/users/:id/education
+const updateUserEducation = async (req, res) => {
+    try {
+        if (!['admin', 'university', 'scholarship'].includes(req.user.role) && String(req.user._id) !== String(req.params.id)) {
+            return res.status(403).json({ message: 'Unauthorized' });
+        }
+
+        const user = await User.findById(req.params.id);
+        if (!user) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+
+        const section = String(req.body.section || '').trim();
+        const field = String(req.body.field || '').trim();
+        const uploadedFiles = flattenUploadedFiles(req.files);
+        const file = uploadedFiles.length > 0 ? uploadedFiles[0] : null;
+
+        for (let i = 1; i < uploadedFiles.length; i += 1) {
+            await deleteUploadedFile(uploadedFiles[i].path);
+        }
+
+        if (!section || !field || !file) {
+            return res.status(400).json({ message: 'section, field and file are required' });
+        }
+        const storagePath = resolveEducationStoragePath(section, field);
+        if (!storagePath) {
+            await deleteUploadedFile(file.path);
+            return res.status(400).json({ message: 'Invalid education section/field' });
+        }
+
+        const education = JSON.parse(JSON.stringify(user.education || {}));
+        if (!education[storagePath.section] || typeof education[storagePath.section] !== 'object') {
+            education[storagePath.section] = {};
+        }
+        const previousFile = education[storagePath.section][storagePath.field];
+        const renameLabel =
+            EDUCATION_FILE_LABEL_MAP[file.fieldname] ||
+            getEducationDownloadLabel(storagePath.section, storagePath.field) ||
+            field;
+        const renamed = await uploadToCloudinary(file.path, [user?.name || 'applicant',
+            storagePath.section,
+            renameLabel,
+        ], { originalName: file.originalname });
+        if (!renamed) {
+            await deleteUploadedFile(file.path);
+            throw new Error('Failed to upload education file');
+        }
+        education[storagePath.section][storagePath.field] = renamed;
+        user.education = education;
+        user.markModified('education');
+
+        if (previousFile && previousFile !== renamed) {
+            await deleteUploadedFile(previousFile);
+        }
+        await user.save();
+
+        const snapshot = JSON.parse(JSON.stringify(user.education || {}));
+        snapshot.personalInfoSnapshot = snapshot.personalInfo || {};
+        
+        // Sync with active application snapshots to reflect the newest version
+        await Application.updateMany(
+            { 
+                user: user._id,
+                status: { $nin: ['Selected', 'Rejected'] }
+            },
+            { $set: { educationSnapshot: snapshot } }
+        );
+
+        const userResponse = await toResponseUser(user, false);
+        invalidateUserCaches(user._id);
+        return res.json({ data: userResponse });
+    } catch (error) {
+        return res.status(400).json({ message: error.message });
+    }
+};
+
+// @desc    Download user education file
+// @route   GET /api/users/:id/education/:section/:field/download
+const downloadUserEducationFile = async (req, res) => {
+    try {
+        if (!['admin', 'university', 'scholarship'].includes(req.user.role) && String(req.user._id) !== String(req.params.id)) {
+            return res.status(403).json({ message: 'Unauthorized' });
+        }
+
+        const section = String(req.params.section || '').trim();
+        const field = String(req.params.field || '').trim();
+        const storagePath = resolveEducationStoragePath(section, field);
+        if (!storagePath) {
+            return res.status(400).json({ message: 'Invalid education file path' });
+        }
+
+        const user = await User.findById(req.params.id).select('name education').lean();
+        if (!user) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+
+        const filename = user?.education?.[storagePath.section]?.[storagePath.field];
+        if (typeof filename !== 'string' || !filename.trim()) {
+            return res.status(404).json({ message: 'Document not found' });
+        }
+
+        const requestedName = path.basename(
+            String(req.query.downloadName || '').trim()
+        );
+        let fallbackSourceName = path.basename(filename.trim());
+        if (filename.includes('://')) {
+            try {
+                fallbackSourceName = path.basename(new URL(filename).pathname);
+            } catch {
+                fallbackSourceName = path.basename(filename.trim());
+            }
+        }
+        const ext = path.extname(fallbackSourceName) || '.pdf';
+        const fallbackName = `${sanitizeFileNamePart(user.name || 'applicant', 'applicant')}-${sanitizeFileNamePart(
+            getEducationDownloadLabel(section, field),
+            field
+        )}${ext}`;
+
+        const sent = await downloadStoredFile(
+            res,
+            filename,
+            requestedName || fallbackName,
+            { forcePdf: true }
+        );
+        if (!sent) {
+            return res.status(404).json({ message: 'File does not exist on server' });
+        }
+        return null;
+    } catch (error) {
+        return res.status(500).json({ message: error.message });
+    }
+};
+
+// @desc    Delete user education field by admin (or owner)
+// @route   DELETE /api/users/:id/education/:section/:field
+const deleteUserEducationField = async (req, res) => {
+    try {
+        if (!['admin', 'university', 'scholarship'].includes(req.user.role) && String(req.user._id) !== String(req.params.id)) {
+            return res.status(403).json({ message: 'Unauthorized' });
+        }
+
+        const user = await User.findById(req.params.id);
+        if (!user) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+
+        const { section, field } = req.params;
+        const storagePath = resolveEducationStoragePath(section, field);
+        if (!storagePath) {
+            return res.status(400).json({ message: 'Invalid education file path' });
+        }
+        const education = JSON.parse(JSON.stringify(user.education || {}));
+
+        if (education[storagePath.section] && typeof education[storagePath.section] === 'object') {
+            const previousFile = education[storagePath.section][storagePath.field];
+            delete education[storagePath.section][storagePath.field];
+            if (previousFile) {
+                await deleteUploadedFile(previousFile);
+            }
+        }
+
+        user.education = education;
+        user.markModified('education');
+        await user.save();
+
+        const snapshot = JSON.parse(JSON.stringify(user.education || {}));
+        snapshot.personalInfoSnapshot = snapshot.personalInfo || {};
+        
+        // Also remove from any active application snapshots to avoid "Zombie Docs"
+        await Application.updateMany(
+            { 
+                user: user._id,
+                status: { $nin: ['Selected', 'Rejected'] }
+            },
+            { $set: { educationSnapshot: snapshot } }
+        );
+
+        const userResponse = await toResponseUser(user, false);
+        invalidateUserCaches(user._id);
+        return res.json({ data: userResponse });
+    } catch (error) {
+        return res.status(400).json({ message: error.message });
+    }
+};
+
+// @desc    Get current user notifications
+// @route   GET /api/users/notifications
+const getUserNotifications = async (req, res) => {
+    try {
+        const user = await User.findById(req.user._id).select('notifications');
+        if (!user) return res.status(404).json({ message: 'User not found' });
+
+        await ensureDeadlineRemindersForUser(user);
+        const notifications = (user.notifications || []).sort(
+            (a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)
+        );
+
+        return res.json({ data: notifications });
+    } catch (error) {
+        return res.status(500).json({ message: error.message });
+    }
+};
+
+// @desc    Mark all notifications as read
+// @route   PUT /api/users/notifications/read
+const markAllNotificationsAsRead = async (req, res) => {
+    try {
+        const user = await User.findById(req.user._id);
+        if (!user) return res.status(404).json({ message: 'User not found' });
+
+        user.notifications = (user.notifications || []).map((item) => {
+            const plain = item && typeof item.toObject === 'function' ? item.toObject() : { ...item };
+            return {
+                ...plain,
+                isRead: true,
+            };
+        });
+        await user.save();
+
+        return res.json({ message: 'Notifications marked as read' });
+    } catch (error) {
+        return res.status(500).json({ message: error.message });
+    }
+};
+
+// @desc    Delete user by admin
+// @route   DELETE /api/users/:id
+// @access  Private/Admin
+const deleteUserByAdmin = async (req, res) => {
+    try {
+        const user = await User.findById(req.params.id).select('education').lean();
+        if (!user) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+
+        const educationFiles = EDUCATION_FILE_PATHS.map((dotPath) =>
+            dotPath.split('.').reduce((acc, part) => acc?.[part], user.education)
+        ).filter((value) => typeof value === 'string' && value.trim());
+
+        const applications = await Application.find({ user: req.params.id })
+            .select('admitCard offerLetter offeredUniversities')
+            .lean();
+
+        const applicationFiles = applications.flatMap((app) => [
+            app?.admitCard,
+            app?.offerLetter,
+            ...(app?.offeredUniversities || []).flatMap((entry) => [
+                entry?.admitCard,
+                entry?.offerLetter,
+            ]),
+        ]).filter((value) => typeof value === 'string' && value.trim());
+
+        await Application.deleteMany({ user: req.params.id });
+        await User.findByIdAndDelete(req.params.id);
+
+        const filesToDelete = [...new Set([...educationFiles, ...applicationFiles])];
+        for (const file of filesToDelete) {
+            await deleteUploadedFile(file);
+        }
+
+        invalidateUserCaches(req.params.id);
+        invalidateCacheByTags([
+            'applications-summary',
+            'applications-admin-list',
+            'applications-user-list',
+        ]);
+        return res.json({ message: 'User deleted successfully' });
+    } catch (error) {
+        return res.status(500).json({ message: error.message });
+    }
+};
+
+module.exports = {
+    authUser,
+    registerUser,
+    getUserProfile,
+    updateUserProfile,
+    getUsers,
+    getUserById,
+    updateUserByAdmin,
+    updateUserEducation,
+    deleteUserEducationField,
+    downloadUserEducationFile,
+    getUserNotifications,
+    markAllNotificationsAsRead,
+    deleteUserByAdmin,
+};
