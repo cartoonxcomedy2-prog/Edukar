@@ -95,7 +95,7 @@ function renderDetail() {
     // ====== ABOUT (max 3 lines + See More) ======
     html += '<div style="background:#fff; border:1px solid #E2E8F0; border-radius:16px; padding:16px 20px; margin-bottom:16px;">';
     html += '<h3 style="font-size:15px; font-weight:800; color:#0F172A; margin-bottom:8px;"><i class="fas fa-award" style="color:var(--orange); margin-right:8px;"></i>About</h3>';
-    html += '<p class="about-text" id="aboutText" style="-webkit-line-clamp:6;">' + escapeHtml(sch.description || 'No description available.') + '</p>';
+    html += '<p class="about-text" id="aboutText">' + escapeHtml(sch.description || 'No description available.') + '</p>';
     if ((sch.description || '').length > 150) {
         html += '<button class="see-more-btn" id="aboutToggle" style="color:var(--orange); background:#FFF7ED;">See More <i class="fas fa-chevron-down" style="font-size:10px; margin-left:4px;"></i></button>';
     }
