@@ -169,14 +169,144 @@
             <div><div class="navbar__logo" style="margin-bottom:16px;"><div class="navbar__logo-icon"><i class="fas fa-graduation-cap"></i></div><span style="color:#fff;">EduKar</span></div><p style="font-size:14px; line-height:1.7;">Your gateway to top universities and scholarships.</p></div>
             <div><h4 class="footer__title">Navigation</h4><a href="home" class="footer__link">Home</a><a href="universities" class="footer__link">Universities</a><a href="scholarships" class="footer__link">Scholarships</a></div>
             <div><h4 class="footer__title">Account</h4><a href="my-account" class="footer__link">My Profile</a><a href="education-documents" class="footer__link">Documents</a><a href="track-application" class="footer__link">Applications</a></div>
+</head>
+<body style="visibility:hidden; opacity:0;">
+
+<!-- BANNER SECTION -->
+<section style="padding-top:24px;">
+    <div class="container">
+        <div class="banner-slider" id="bannerSlider"><div class="page-loader"><div class="loader"></div></div></div>
+        <div class="banner-slider__dots" id="bannerDots"></div>
+    </div>
+</section>
+
+<!-- WELCOME BAR -->
+<section style="padding:40px 0 0;">
+    <div class="container">
+        <div class="fade-in" style="background:linear-gradient(135deg, var(--navy) 0%, var(--primary-dark) 100%); border-radius:24px; padding:40px; color:#fff; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:24px;">
+            <div>
+                <h1 style="font-size:28px; font-weight:900; margin-bottom:6px;" id="greeting">Welcome back!</h1>
+                <p style="color:var(--slate-400); font-size:16px;">Your education journey starts here. Explore, apply, and succeed.</p>
+            </div>
+            <div style="display:flex; gap:12px; flex-wrap:wrap;">
+                <a href="universities" class="btn btn--primary"><i class="fas fa-university"></i> Browse Universities</a>
+                <a href="scholarships" class="btn" style="background:rgba(255,255,255,.15); color:#fff; backdrop-filter:blur(10px);"><i class="fas fa-award"></i> Scholarships</a>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- QUICK STATS -->
+<section style="padding:40px 0;">
+    <div class="container">
+        <div class="grid grid--4">
+            <div class="quick-stat fade-in" style="background:linear-gradient(135deg, #EAF7EE, #D1FAE5);">
+                <div class="quick-stat__icon" style="background:var(--primary); color:#fff;"><i class="fas fa-university"></i></div>
+                <div class="quick-stat__num" style="color:var(--primary);" id="sUni">0</div>
+                <div class="quick-stat__label" style="color:var(--primary-dark);">Universities</div>
+            </div>
+            <div class="quick-stat fade-in stagger-1" style="background:linear-gradient(135deg, #FFF7ED, #FFEDD5);">
+                <div class="quick-stat__icon" style="background:var(--orange); color:#fff;"><i class="fas fa-award"></i></div>
+                <div class="quick-stat__num" style="color:var(--orange);" id="sSch">0</div>
+                <div class="quick-stat__label" style="color:#9A3412;">Scholarships</div>
+            </div>
+            <div class="quick-stat fade-in stagger-2" style="background:linear-gradient(135deg, #EEF2FF, #E0E7FF);">
+                <div class="quick-stat__icon" style="background:#6366F1; color:#fff;"><i class="fas fa-paper-plane"></i></div>
+                <div class="quick-stat__num" style="color:#6366F1;" id="sApp">0</div>
+                <div class="quick-stat__label" style="color:#4338CA;">My Applications</div>
+            </div>
+            <div class="quick-stat fade-in stagger-3" style="background:linear-gradient(135deg, #FEF2F2, #FFE4E6);">
+                <div class="quick-stat__icon" style="background:var(--red); color:#fff;"><i class="fas fa-bell"></i></div>
+                <div class="quick-stat__num" style="color:var(--red);" id="sNotif">0</div>
+                <div class="quick-stat__label" style="color:#991B1B;">Unread Alerts</div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- QUICK ACTIONS -->
+<section class="section section--gray">
+    <div class="container">
+        <div class="section-header" style="text-align:center;"><h2>What would you like to do?</h2><p>Navigate to any section quickly</p></div>
+        <div class="grid grid--4">
+            <a href="universities" class="card fade-in" style="text-decoration:none; padding:36px 24px; text-align:center;">
+                <div class="quick-stat__icon" style="background:var(--primary-light); color:var(--primary); margin:0 auto 16px;"><i class="fas fa-university"></i></div>
+                <h3 style="font-weight:800; color:var(--navy); margin-bottom:8px; font-size:16px;">Browse Universities</h3>
+                <p style="font-size:13px; color:var(--slate-500);">Explore programs, eligibility & apply</p>
+            </a>
+            <a href="scholarships" class="card fade-in stagger-1" style="text-decoration:none; padding:36px 24px; text-align:center;">
+                <div class="quick-stat__icon" style="background:#FFF7ED; color:var(--orange); margin:0 auto 16px;"><i class="fas fa-award"></i></div>
+                <h3 style="font-weight:800; color:var(--navy); margin-bottom:8px; font-size:16px;">Scholarships</h3>
+                <p style="font-size:13px; color:var(--slate-500);">Find funded opportunities</p>
+            </a>
+            <a href="education-documents" class="card fade-in stagger-2" style="text-decoration:none; padding:36px 24px; text-align:center;">
+                <div class="quick-stat__icon" style="background:#EEF2FF; color:#6366F1; margin:0 auto 16px;"><i class="fas fa-file-upload"></i></div>
+                <h3 style="font-weight:800; color:var(--navy); margin-bottom:8px; font-size:16px;">Education Documents</h3>
+                <p style="font-size:13px; color:var(--slate-500);">Upload matric, inter, degree files</p>
+            </a>
+            <a href="track-application" class="card fade-in stagger-3" style="text-decoration:none; padding:36px 24px; text-align:center;">
+                <div class="quick-stat__icon" style="background:#F0FDF4; color:var(--accent); margin:0 auto 16px;"><i class="fas fa-chart-line"></i></div>
+                <h3 style="font-weight:800; color:var(--navy); margin-bottom:8px; font-size:16px;">Track Applications</h3>
+                <p style="font-size:13px; color:var(--slate-500);">Check your application status</p>
+            </a>
+        </div>
+    </div>
+</section>
+
+<!-- HOW IT WORKS -->
+<section class="section">
+    <div class="container text-center">
+        <div class="section-header"><h2>How It Works</h2><p>Simple steps to your dream education</p></div>
+        <div class="grid grid--4">
+            <div class="fade-in" style="text-align:center;">
+                <div style="width:64px; height:64px; background:var(--primary-light); border-radius:50%; display:flex; align-items:center; justify-content:center; margin:0 auto 16px; font-size:28px; font-weight:900; color:var(--primary);">1</div>
+                <h4 style="font-weight:800; color:var(--navy); margin-bottom:6px;">Create Account</h4>
+                <p style="font-size:13px; color:var(--slate-500);">Sign up & complete your profile</p>
+            </div>
+            <div class="fade-in stagger-1" style="text-align:center;">
+                <div style="width:64px; height:64px; background:#FFF7ED; border-radius:50%; display:flex; align-items:center; justify-content:center; margin:0 auto 16px; font-size:28px; font-weight:900; color:var(--orange);">2</div>
+                <h4 style="font-weight:800; color:var(--navy); margin-bottom:6px;">Upload Documents</h4>
+                <p style="font-size:13px; color:var(--slate-500);">Add your academic records</p>
+            </div>
+            <div class="fade-in stagger-2" style="text-align:center;">
+                <div style="width:64px; height:64px; background:#EEF2FF; border-radius:50%; display:flex; align-items:center; justify-content:center; margin:0 auto 16px; font-size:28px; font-weight:900; color:#6366F1;">3</div>
+                <h4 style="font-weight:800; color:var(--navy); margin-bottom:6px;">Apply Online</h4>
+                <p style="font-size:13px; color:var(--slate-500);">Choose a program & submit</p>
+            </div>
+            <div class="fade-in stagger-3" style="text-align:center;">
+                <div style="width:64px; height:64px; background:#F0FDF4; border-radius:50%; display:flex; align-items:center; justify-content:center; margin:0 auto 16px; font-size:28px; font-weight:900; color:var(--accent);">4</div>
+                <h4 style="font-weight:800; color:var(--navy); margin-bottom:6px;">Get Selected</h4>
+                <p style="font-size:13px; color:var(--slate-500);">Track status in real-time</p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- RECENT APPLICATIONS -->
+<section class="section section--gray">
+    <div class="container">
+        <div class="section-header section-header--between">
+            <div><h2>My Recent Applications</h2><p>Your latest submissions</p></div>
+            <a href="track-application" class="btn btn--outline btn--sm">View All <i class="fas fa-arrow-right"></i></a>
+        </div>
+        <div id="recentApps"><div class="page-loader"><div class="loader"></div></div></div>
+    </div>
+</section>
+
+<footer class="footer">
+    <div class="container">
+        <div class="footer__grid">
+            <div><div class="navbar__logo" style="margin-bottom:16px;"><div class="navbar__logo-icon"><i class="fas fa-graduation-cap"></i></div><span style="color:#fff;">EduKar</span></div><p style="font-size:14px; line-height:1.7;">Your gateway to top universities and scholarships.</p></div>
+            <div><h4 class="footer__title">Navigation</h4><a href="home" class="footer__link">Home</a><a href="universities" class="footer__link">Universities</a><a href="scholarships" class="footer__link">Scholarships</a></div>
+            <div><h4 class="footer__title">Account</h4><a href="my-account" class="footer__link">My Profile</a><a href="education-documents" class="footer__link">Documents</a><a href="track-application" class="footer__link">Applications</a></div>
             <div><h4 class="footer__title">Contact</h4><a href="mailto:support@edukar.com" class="footer__link"><i class="fas fa-envelope"></i> support@edukar.com</a><a href="#" class="footer__link"><i class="fas fa-phone"></i> +92 300 1234567</a></div>
         </div>
         <div class="footer__bottom">© 2026 EduKar. All rights reserved.</div>
     </div>
 </footer>
 
-<script src="js/config.js"></script>
-<script src="js/dashboard-nav.js"></script>
-<script src="js/home.js"></script>
+<script src="js/config.js?v=2"></script>
+<script src="js/dashboard-nav.js?v=2"></script>
+<script src="js/home.js?v=2"></script>
 </body>
 </html>

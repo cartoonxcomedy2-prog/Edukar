@@ -1,5 +1,6 @@
 // ============ API CONFIG ============
-const API_BASE = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') ? 'http://localhost:5000' : 'https://supadmin.edukar.info/api';
+const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.hostname.startsWith('192.168.') || window.location.hostname.startsWith('10.');
+const API_BASE = isLocal ? `http://${window.location.hostname}:5000` : 'https://supadmin.edukar.info/api';
 const SESSION_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 const getApiBase = () => localStorage.getItem('st_api_base') || API_BASE;
 
