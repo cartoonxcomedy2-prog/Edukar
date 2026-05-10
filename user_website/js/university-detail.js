@@ -52,7 +52,12 @@ function filterProgs(type) {
 function fmtMoney(amt) {
     if (!amt || amt === '0' || amt === '0.0') return 'Free';
     var cur = uni.currency || uni.feeCurrency || '';
-    try { return (cur ? cur + ' ' : '') + Number(String(amt).replace(/,/g, '')).toLocaleString(); } catch (e) { return amt; }
+    var str = String(amt).trim();
+    try { 
+        var num = Number(str.replace(/,/g, ''));
+        if (isNaN(num)) return str;
+        return (cur ? cur + ' ' : '') + num.toLocaleString(); 
+    } catch (e) { return amt; }
 }
 
 function renderDetail() {
